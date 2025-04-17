@@ -46,7 +46,7 @@ void Sender::recv_addr(int sockfd)
     printf("    tail_ptr: %p\n", remote_tail_ptr);
     printf("    head: %p\n", remote_head);
     printf("    tail: %p\n", remote_tail);
-    // printf("    size: %p\n", size);
+    printf("    size: %p\n", size);
 }
 
 Sender::Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd)

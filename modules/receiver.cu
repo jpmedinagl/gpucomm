@@ -9,7 +9,7 @@ __global__ void export_rb_metadata(RingBuffer* rb, RingBufferRemoteInfo* metadat
     metadata->tail_addr_ptr = reinterpret_cast<uintptr_t>(&(rb->tail));
     metadata->head_addr = reinterpret_cast<uintptr_t>(rb->head);
     metadata->tail_addr = reinterpret_cast<uintptr_t>(rb->tail);
-    // metadata->size = rb->size;
+    metadata->size = rb->size;
 }
 
 __global__ void init_ringbuffer_kernel(RingBuffer* rb, void* buffer, size_t num_chunks) 
@@ -65,7 +65,7 @@ void Receiver::send_addr(int sockfd)
     printf("    tail_ptr: %p\n", meta.tail_addr_ptr);
     printf("    head: %p\n", meta.head_addr);
     printf("    tail: %p\n", meta.tail_addr);
-    // printf("    size: %p\n\n", meta.size);
+    printf("    size: %p\n\n", meta.size);
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,

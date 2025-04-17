@@ -28,7 +28,7 @@ private:
     uintptr_t remote_tail_ptr;
     uintptr_t remote_head;
     uintptr_t remote_tail;
-    // size_t size;
+    size_t size;
 
     void process_req(void * request);
 
