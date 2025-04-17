@@ -21,7 +21,6 @@ public:
     void * head;
     void * tail;
     size_t size;
-    size_t count;
 
     // RingBuffer(void * buf, size_t num_chunks);
 
@@ -29,16 +28,15 @@ public:
         buffer = buf;
         head = buf;
         tail = buf;
-        size = num_chunks + 1;
-        count = 0;
+        size = num_chunks;
     };
 
     __device__ bool is_empty() const {
-        return count == 0;
+        return head == tail;
     };
 
     __device__ bool is_full() const {
-        return count == size;
+        return ((tail + 1) % size) == head;
     };
 
     __device__ bool enqueue(const void * chunk) {
@@ -53,14 +51,13 @@ public:
                             (size * CHUNK_SIZE);
         tail = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(buffer) + offset);
 
-        count--;
         return true;
     };
 
     __device__ bool dequeue(void* out_chunk) {
-        // if (is_empty()) {
-        //     return false;
-        // }
+        if (is_empty()) {
+            return false;
+        }
 
         memcpy(out_chunk, head, CHUNK_SIZE);
 
@@ -69,7 +66,6 @@ public:
                             % (size * CHUNK_SIZE);
         head = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(buffer) + offset);
 
-        count--;
         return true;
     };
 };
