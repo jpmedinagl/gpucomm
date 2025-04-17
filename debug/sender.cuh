@@ -15,7 +15,7 @@ private:
 
     // ring buffer is registered for rdma
     ucp_mem_h memh;
-    uintptr_t tmp_debug;
+    uint64_t * tmp_debug;
 
     // needs to keep track of the next things for every single gpu...?
     ucp_ep_h ep;
@@ -23,7 +23,7 @@ private:
     // ucp_address_t* remote_worker;
     ucp_rkey_h remote_rkey;
 
-    uintptr_t remote;
+    uint64_t * remote;
 
     void process_req(void * request);
 

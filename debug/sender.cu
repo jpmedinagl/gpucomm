@@ -32,10 +32,10 @@ void Sender::recv_addr(int sockfd)
     free(remote_rkey_buffer);
 
     // 2. receive ring buffer information
-    socket_recv(sockfd, &remote, sizeof(void *));
+    socket_recv(sockfd, &remote, sizeof(remote));
 
     printf("remote info:\n");
-    printf("    rand_ptr: %p\n", remote);
+    printf("    buf: %p\n", remote);
 }
 
 Sender::Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd)

@@ -14,46 +14,35 @@ void Receiver::send_addr(int sockfd)
     ucp_rkey_buffer_release(rkey_buffer);
 
     // 2. send ring buffer information
-    socket_send(sockfd, &rand, sizeof(void*));
+    socket_send(sockfd, &buffer, sizeof(buffer));
 
     printf("local info:\n");
-    printf("    rand_ptr %p\n", &rand);
-    printf("    rand: %p\n", rand);
-
-    void* rand_value;
-    cudaError_t err = cudaMemcpy(&rand_value, rand, sizeof(void*), cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) {
-        printf("    *rand: CUDA ERROR (%s)\n", cudaGetErrorString(err));
-    } else {
-        printf("    *rand (value stored at GPU memory): %p\n", rand_value);
-    }
+    printf("    buf_ptr %p\n", (void*)&buffer);
+    printf("    buf: %p\n", (void*)buffer);
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
                    int sockfd)
     : context(ctx), worker(wrk), ep(endpoint)
 {    
-    // 1. allocate buffer
-    void* gpu_memory;
-    // const size_t total_size = sizeof(RingBuffer) + (NUM_CHUNKS + CHUNK_SIZE);
-    cudaMalloc(&gpu_memory, sizeof(void *));
+    uint64_t* remote_buffer;
+    cudaMalloc(&remote_buffer, sizeof(uint64_t));
 
-    void* initial_value = reinterpret_cast<void*>(0x10);
-    cudaMemcpy(gpu_memory, &initial_value, sizeof(void*), cudaMemcpyHostToDevice);
+    uint64_t init_value = 0xa;
+    cudaMemcpy(remote_buffer, &init_value, sizeof(uint64_t), cudaMemcpyHostToDevice);
 
-    // 2. map memory
-    ucp_mem_map_params_t params = {
-        .field_mask = 
-                      UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+    ucp_mem_map_params_t mem_map_params = {
+        .field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
                       UCP_MEM_MAP_PARAM_FIELD_LENGTH |
                       UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE,
-        .address = gpu_memory,
-        .length = sizeof(void *),
+        .address = remote_buffer,
+        .length = sizeof(uint64_t),
         .memory_type = UCS_MEMORY_TYPE_CUDA
     };
-    UCS_CHECK(ucp_mem_map(context, &params, &memh));
+    
+    ucp_mem_map(ucp_context, &mem_map_params, &memh);
 
-    rand = gpu_memory;
+    buffer = remote_buffer;
 
     send_addr(sockfd);
 }
@@ -62,8 +51,4 @@ void Receiver::print_rb()
 {
     // Print the values of rand_ptr and rand
     printf("rand: %p\n", rand);
-
-    void* current_value;
-    cudaMemcpy(&current_value, rand, sizeof(void*), cudaMemcpyDeviceToHost);
-    printf("*rand: %p\n", current_value);
 }

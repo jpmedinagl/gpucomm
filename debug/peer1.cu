@@ -52,7 +52,7 @@ int main()
     // Sender sender(context, worker, ep, memh, remote_worker, remote_rkey);
     Sender sender(context, worker, ep, sockfd);
 
-    printf("Sender connected\n\n");   
+    printf("Sender connected\n\n");
 
     sender.remote_push(1);
     // for (int i = 0; i < NUM_CHUNKS; i++) {
