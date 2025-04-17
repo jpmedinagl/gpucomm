@@ -59,7 +59,7 @@ int main()
     //     sender.remote_push(1);
     //     printf("Sent chunk %d\n", i);
     // }
-    sender.verify_remote_update();
+    // sender.verify_remote_update();
 
     return 0;
 }

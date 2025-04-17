@@ -14,8 +14,8 @@ private:
     ucp_worker_h worker;
 
     // ring buffer is registered for rdma
-    ucp_mem_h memh;
-    uint64_t * tmp_debug;
+    // ucp_mem_h memh;
+    // uint64_t * tmp_debug;
 
     // needs to keep track of the next things for every single gpu...?
     ucp_ep_h ep;

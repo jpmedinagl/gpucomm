@@ -65,7 +65,7 @@ void Sender::remote_push(int gpu_id)
 {   
     (void) gpu_id;
     
-    void* new_value = reinterpret_cast<void*>(0x20);
+    uint64_t new_value = 0x20;
 
     // 2. Critical: Specify memory type for GPU operation
     ucp_request_param_t put_params = {
@@ -77,8 +77,8 @@ void Sender::remote_push(int gpu_id)
     void* request = ucp_put_nbx(
         ep,                    // Endpoint to receiver
         &new_value,            // Source address (host memory)
-        sizeof(void*),         // Size of pointer
-        (uintptr_t)remote,  // Remote GPU address
+        sizeof(new_value),         // Size of pointer
+        remote,  // Remote GPU address
         remote_rkey,           // Remote key
         &put_params
     );
@@ -103,8 +103,7 @@ void Sender::remote_push(int gpu_id)
         return;
     }
 
-    printf("Successfully updated remote rand at GPU address %p to 0x20\n", 
-           remote);
+    printf("Successfully updated remote rand at GPU address %p to 0x20\n", remote);
 }
 
 void Sender::verify_remote_update() {

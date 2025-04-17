@@ -13,12 +13,13 @@ void Receiver::send_addr(int sockfd)
     socket_send(sockfd, rkey_buffer, rkey_size);
     ucp_rkey_buffer_release(rkey_buffer);
 
-    // 2. send ring buffer information
-    socket_send(sockfd, &buffer, sizeof(buffer));
+    // // 2. send ring buffer information
+    uintptr_t gpu_address_of_buffer;
+    cudaMemcpy(&gpu_address_of_buffer, &buffer, sizeof(uint64_t*), cudaMemcpyDeviceToHost);
 
-    printf("local info:\n");
-    printf("    buf_ptr %p\n", (void*)&buffer);
-    printf("    buf: %p\n", (void*)buffer);
+    // 3. Send the address of the pointer over the socket
+    socket_send(sockfd, &gpu_address_of_buffer, sizeof(gpu_address_of_buffer));
+    printf("Sent GPU address of pointer: %p\n", (void*)gpu_address_of_buffer);
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
@@ -40,7 +41,7 @@ Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
         .memory_type = UCS_MEMORY_TYPE_CUDA
     };
     
-    ucp_mem_map(ucp_context, &mem_map_params, &memh);
+    ucp_mem_map(context, &mem_map_params, &memh);
 
     buffer = remote_buffer;
 
@@ -49,6 +50,8 @@ Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
 
 void Receiver::print_rb()
 {
-    // Print the values of rand_ptr and rand
-    printf("rand: %p\n", rand);
+    uint64_t value;
+    cudaMemcpy(&value, buffer, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    printf("buffer (device ptr): %p\n", (void*)buffer);
+    printf("*buffer (device value): 0x%lx\n", value);
 }
