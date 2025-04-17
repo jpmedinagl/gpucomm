@@ -13,6 +13,10 @@ private:
     ucp_context_h context;
     ucp_worker_h worker;
 
+    // ring buffer is registered for rdma
+    ucp_mem_h memh;
+    uintptr_t tmp_debug;
+
     RingBuffer * d_ringbuf;
 
     // needs to keep track of the next things for every single gpu...?

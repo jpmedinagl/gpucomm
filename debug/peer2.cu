@@ -38,8 +38,8 @@ int main()
     printf("Receiver connected\n\n");
 
     while (1) {
-        sleep(2);
         receiver.print_rb();
+        sleep(1);
     }
 
     // for (int i = 0; i < NUM_CHUNKS; i++) {

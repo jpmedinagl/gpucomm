@@ -17,10 +17,10 @@ private:
 
     void send_addr(int sockfd);
 
-    void print_rb();
-
 public:
     Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd);
+
+    void print_rb();
 
     void dequeue(void * out_chunk);
 };

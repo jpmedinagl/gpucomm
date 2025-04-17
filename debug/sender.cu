@@ -149,7 +149,7 @@ void Sender::remote_push(int gpu_id)
     void* tail_req = ucp_put_nbx(
         ep,
         &new_tail,
-        sizeof(void **),
+        sizeof(void *),
         remote_tail_ptr,
         remote_rkey,
         &tail_params
@@ -157,6 +157,24 @@ void Sender::remote_push(int gpu_id)
     process_req(tail_req);
 
     printf("tail written\n");
+
+    // get new written tail
+    ucp_request_param_t get_params = {
+        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
+        .memory_type = UCS_MEMORY_TYPE_CUDA
+    };
+    void *get_req = ucp_get_nbx(
+        ep,
+        tmp_debug,
+        sizeof(void *),
+        remote_tail_ptr,
+        remote_rkey,
+        &get_params
+    );
+    process_req(get_req);
+    ucp_request_check_status(tail_req);
+
+    printf("get tail: %p\n", (void*)tmp_debug);
 
     // 4. update local reference of the tail
     remote_tail = (uintptr_t)new_tail;
