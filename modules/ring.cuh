@@ -36,7 +36,11 @@ public:
     };
 
     __device__ bool is_full() const {
-        return ((tail + 1) % size) == head;
+        uintptr_t offset = (reinterpret_cast<uintptr_t>(tail) - 
+                            reinterpret_cast<uintptr_t>(buffer) + CHUNK_SIZE) % 
+                            (size * CHUNK_SIZE);
+        void *tmp_tail = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(buffer) + offset);
+        return tmp_tail == head;
     };
 
     __device__ bool enqueue(const void * chunk) {
