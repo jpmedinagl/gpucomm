@@ -14,7 +14,7 @@ private:
     ucp_worker_h worker;
 
     // ring buffer is registered for rdma
-    ucp_mem_h memh;
+    // ucp_mem_h memh;
     RingBuffer * d_ringbuf;
 
     // needs to keep track of the next things for every single gpu...?
@@ -28,7 +28,7 @@ private:
     uintptr_t remote_tail_ptr;
     uintptr_t remote_head;
     uintptr_t remote_tail;
-    size_t size;
+    // size_t size;
 
     void process_req(void * request);
 

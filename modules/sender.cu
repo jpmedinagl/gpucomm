@@ -25,7 +25,7 @@ void Sender::recv_addr(int sockfd)
     void *remote_rkey_buffer = malloc(remote_rkey_size);
     socket_recv(sockfd, remote_rkey_buffer, remote_rkey_size);
 
-    printf("Rkey recv: %p %zu\n", remote_rkey_buffer, remote_rkey_size);
+    printf("rkey recv: %p %zu\n\n", remote_rkey_buffer, remote_rkey_size);
 
     UCS_CHECK(ucp_ep_rkey_unpack(ep, remote_rkey_buffer, &remote_rkey));
 
@@ -41,12 +41,12 @@ void Sender::recv_addr(int sockfd)
     remote_tail = buf.tail_addr;
     size = buf.size;
 
-    printf("\nRemote ring buffer info:\n");
-    printf("buf: %p\n", remote_buf);
-    printf("tail_ptr: %p\n", remote_tail_ptr);
-    printf("head: %p\n", remote_head);
-    printf("tail: %p\n", remote_tail);
-    printf("size: %p\n", size);
+    printf("Remote ring buffer info:\n");
+    printf("    buf: %p\n", remote_buf);
+    printf("    tail_ptr: %p\n", remote_tail_ptr);
+    printf("    head: %p\n", remote_head);
+    printf("    tail: %p\n", remote_tail);
+    // printf("    size: %p\n", size);
 }
 
 Sender::Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd)

@@ -12,7 +12,7 @@ struct RingBufferRemoteInfo {
     uintptr_t tail_addr_ptr;
     uintptr_t head_addr;
     uintptr_t tail_addr;
-    size_t size;
+    // size_t size;
 };
 
 class RingBuffer {

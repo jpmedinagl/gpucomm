@@ -9,7 +9,7 @@ __global__ void export_rb_metadata(RingBuffer* rb, RingBufferRemoteInfo* metadat
     metadata->tail_addr_ptr = reinterpret_cast<uintptr_t>(&(rb->tail));
     metadata->head_addr = reinterpret_cast<uintptr_t>(rb->head);
     metadata->tail_addr = reinterpret_cast<uintptr_t>(rb->tail);
-    metadata->size = rb->size;
+    // metadata->size = rb->size;
 }
 
 __global__ void init_ringbuffer_kernel(RingBuffer* rb, void* buffer, size_t num_chunks) 
@@ -42,7 +42,7 @@ void Receiver::send_addr(int sockfd)
     void *rkey_buffer;
     UCS_CHECK(ucp_rkey_pack(context, memh, &rkey_buffer, &rkey_size));
     
-    printf("Rkey send: %p %zu\n", rkey_buffer, rkey_size);
+    printf("rkey send: %p %zu\n\n", rkey_buffer, rkey_size);
 
     socket_send(sockfd, &rkey_size, sizeof(rkey_size));
     socket_send(sockfd, rkey_buffer, rkey_size);
@@ -60,12 +60,12 @@ void Receiver::send_addr(int sockfd)
 
     socket_send(sockfd, &meta, sizeof(meta));
 
-    printf("Local ring buffer info:\n");
-    printf("buf: %p\n", meta.buffer_addr);
-    printf("tail_ptr: %p\n", meta.tail_addr_ptr);
-    printf("head: %p\n", meta.head_addr);
-    printf("tail: %p\n", meta.tail_addr);
-    printf("size: %p\n\n", meta.size);
+    printf("local ring buffer info:\n");
+    printf("    buf: %p\n", meta.buffer_addr);
+    printf("    tail_ptr: %p\n", meta.tail_addr_ptr);
+    printf("    head: %p\n", meta.head_addr);
+    printf("    tail: %p\n", meta.tail_addr);
+    // printf("    size: %p\n\n", meta.size);
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
