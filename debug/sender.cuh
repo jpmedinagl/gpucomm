@@ -32,8 +32,8 @@ private:
 
 public:
     Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd);
-
-    void remote_push();
+    
+    void remote_push(int gpu_id);
 };
 
 #endif // SENDER_H

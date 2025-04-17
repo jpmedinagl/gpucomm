@@ -54,10 +54,10 @@ int main()
 
     printf("Sender connected\n\n");   
 
-    for (int i = 0; i < NUM_CHUNKS; i++) {
-        sender.remote_push(1);
-        printf("Sent chunk %d\n", i);
-    }
+    // for (int i = 0; i < NUM_CHUNKS; i++) {
+    //     sender.remote_push(1);
+    //     printf("Sent chunk %d\n", i);
+    // }
 
     return 0;
 }

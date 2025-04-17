@@ -11,7 +11,6 @@ private:
     ucp_ep_h ep;
     ucp_mem_h memh;
 
-    void * rand_ptr;
     void * rand;
 
     void send_addr(int sockfd);
