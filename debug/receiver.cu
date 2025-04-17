@@ -49,23 +49,13 @@ void Receiver::send_addr(int sockfd)
     ucp_rkey_buffer_release(rkey_buffer);
 
     // 2. send ring buffer information
-    RingBufferRemoteInfo* d_meta;
-    cudaMalloc(&d_meta, sizeof(RingBufferRemoteInfo));
-    export_rb_metadata<<<1,1>>>(d_ringbuf, d_meta);
-    cudaDeviceSynchronize();
 
-    RingBufferRemoteInfo meta;
-    cudaMemcpy(&meta, d_meta, sizeof(meta), cudaMemcpyDeviceToHost);
-    cudaFree(d_meta);
-
-    socket_send(sockfd, &meta, sizeof(meta));
+    socket_send(sockfd, &rand_ptr, sizeof(void *));
+    socket_send(sockfd, &rand, sizeof(void *));
 
     printf("local ring buffer info:\n");
-    printf("    buf: %p\n", meta.buffer_addr);
-    printf("    tail_ptr: %p\n", meta.tail_addr_ptr);
-    printf("    head: %p\n", meta.head_addr);
-    printf("    tail: %p\n", meta.tail_addr);
-    printf("    size: %p\n\n", meta.size);
+    printf("    rand_ptr %p\n", rand_ptr);
+    printf("    rand: %p\n", rand);
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
@@ -73,91 +63,55 @@ Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,
     : context(ctx), worker(wrk), ep(endpoint)
 {    
     // 1. allocate buffer
-    void* gpu_memory;
-    const size_t total_size = sizeof(RingBuffer) + (NUM_CHUNKS + CHUNK_SIZE);
-    cudaMalloc(&gpu_memory, total_size);
+    // void* gpu_memory;
+    // const size_t total_size = sizeof(RingBuffer) + (NUM_CHUNKS + CHUNK_SIZE);
+    // cudaMalloc(&gpu_memory, total_size);
 
     // 2. map memory
     ucp_mem_map_params_t params = {
-        .field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+        .field_mask = 
+                    //   UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
                       UCP_MEM_MAP_PARAM_FIELD_LENGTH |
+                      UCP_MEM_MAP_PARAM_FIELD_FLAGS |
                       UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE,
-        .address = gpu_memory,
-        .length = total_size,
+        // .address = gpu_memory,
+        .length = 2 * sizeof(void *),
+        .flags = UCP_MEM_MAP_ALLOCATE,
         .memory_type = UCS_MEMORY_TYPE_CUDA
     };
     UCS_CHECK(ucp_mem_map(context, &params, &memh));
 
-    // 3. intialize ring buffer
-    d_ringbuf = reinterpret_cast<RingBuffer*>(gpu_memory);
-    void* data_buffer = reinterpret_cast<char*>(gpu_memory) + sizeof(RingBuffer);
+    ucp_mem_attr_t attr = {
+    .field_mask = UCP_MEM_ATTR_FIELD_ADDRESS |
+                 UCP_MEM_ATTR_FIELD_LENGTH |
+                 UCP_MEM_ATTR_FIELD_MEM_TYPE
+    };
+    UCS_CHECK(ucp_mem_query(memh, &attr));
 
-    init_ringbuffer_kernel<<<1, 1>>>(d_ringbuf, data_buffer, NUM_CHUNKS);
-    cudaDeviceSynchronize();
+    printf("Registered memory: %p, size: %zu, type: %d\n",
+        attr.address, attr.length, attr.mem_type);
+
+    rand_ptr = attr.address;
+
+    // Assign rand to the next memory location after rand_ptr
+    rand = static_cast<void*>(static_cast<char*>(attr.address) + sizeof(void *));
+
+    // Ensure rand_ptr points to rand (within the mapped region)
+    memcpy(rand_ptr, &rand, sizeof(void*));
 
     send_addr(sockfd);
 }
 
 void Receiver::print_rb()
 {
-    RingBufferRemoteInfo* d_meta;
-    cudaMalloc(&d_meta, sizeof(RingBufferRemoteInfo));
-    export_rb_metadata<<<1,1>>>(d_ringbuf, d_meta);
-    cudaDeviceSynchronize();
+    // Print the values of rand_ptr and rand
+    printf("rand_ptr: %p, rand: %p\n", rand_ptr, rand);
 
-    RingBufferRemoteInfo meta;
-    cudaMemcpy(&meta, d_meta, sizeof(meta), cudaMemcpyDeviceToHost);
-    cudaFree(d_meta);
+    // Access the memory location pointed to by rand_ptr (i.e., the address of rand)
+    printf("Value pointed to by rand_ptr: %p\n", *(void**)rand_ptr);
 
-    printf("tail: %p\n", meta.tail_addr);
-}
-
-void Receiver::dequeue(void* out_chunk) 
-{
-    void* local_head;
-    void* local_tail;
-    void** local_tail_ptr;
-
-    // Launch the kernel to get the head and tail pointers
-    get_head_kernel<<<1, 1>>>(d_ringbuf, &local_head);
-    get_tail_kernel<<<1, 1>>>(d_ringbuf, &local_tail);
-    get_tail_ptr_kernel<<<1, 1>>>(d_ringbuf, &local_tail_ptr);
-
-    // Synchronize to ensure the kernel execution completes
-    cudaDeviceSynchronize();
-
-    // Now copy the head and tail pointers from device to host
-    void* local_head_host;
-    void* local_tail_host;
-    void** local_tail_ptr_host;
-    cudaMemcpy(&local_head_host, &local_head, sizeof(void*), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&local_tail_host, &local_tail, sizeof(void*), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&local_tail_ptr_host, &local_tail_ptr, sizeof(void**), cudaMemcpyDeviceToHost);
-
-    // Print the head and tail pointers
-    printf("head:     %p\n", local_head_host);
-    printf("tail:     %p\n", local_tail_host);
-    printf("tail ptr: %p\n", local_tail_ptr_host);
-
-    // dequeue from ring buffer
-    bool success = false;
-    dequeue_kernel<<<1, 1>>>(d_ringbuf, out_chunk, &success);
-
-    if (!success) {
-        std::cout << "Buffer empty" << std::endl;
-    }
-
-    get_head_kernel<<<1, 1>>>(d_ringbuf, &local_head);
-    get_tail_kernel<<<1, 1>>>(d_ringbuf, &local_tail);
-
-    // Synchronize to ensure the kernel execution completes
-    cudaDeviceSynchronize();
-
-    // Now copy the head and tail pointers from device to host
-    cudaMemcpy(&local_head_host, &local_head, sizeof(void*), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&local_tail_host, &local_tail, sizeof(void*), cudaMemcpyDeviceToHost);
-
-    // Print the head and tail pointers
-    printf("head:     %p\n", local_head_host);
-    printf("tail:     %p\n", local_tail_host);
+    // Print the data in rand (you can modify this as per the actual type you expect in rand)
+    int value_in_rand;
+    memcpy(&value_in_rand, rand, sizeof(value_in_rand));
+    printf("Data in rand: %d\n", value_in_rand);
 }

@@ -17,20 +17,14 @@ private:
     ucp_mem_h memh;
     uintptr_t tmp_debug;
 
-    RingBuffer * d_ringbuf;
-
     // needs to keep track of the next things for every single gpu...?
     ucp_ep_h ep;
 
     // ucp_address_t* remote_worker;
     ucp_rkey_h remote_rkey;
 
-    uintptr_t remote_buf;
-    // void ** remote_head_ptr;
-    uintptr_t remote_tail_ptr;
-    uintptr_t remote_head;
-    uintptr_t remote_tail;
-    size_t size;
+    uintptr_t remote_rand_ptr;
+    uintptr_t remote_rand;
 
     void process_req(void * request);
 
@@ -39,9 +33,7 @@ private:
 public:
     Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd);
 
-    bool push(void * data, size_t size);
-
-    void remote_push(int gpu_id);
+    void remote_push();
 };
 
 #endif // SENDER_H

@@ -44,9 +44,9 @@ public:
     };
 
     __device__ bool enqueue(const void * chunk) {
-        if (is_full()) {
-            return false;
-        }
+        // if (is_full()) {
+        //     return false;
+        // }
 
         memcpy(tail, chunk, CHUNK_SIZE);
 
@@ -59,9 +59,9 @@ public:
     };
 
     __device__ bool dequeue(void* out_chunk) {
-        if (is_empty()) {
-            return false;
-        }
+        // if (is_empty()) {
+        //     return false;
+        // }
 
         memcpy(out_chunk, head, CHUNK_SIZE);
 

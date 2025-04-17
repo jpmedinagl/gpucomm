@@ -2,19 +2,19 @@
 
 #include <new>
 
-__global__ void init_ringbuffer_kernel(RingBuffer* rb, void* buffer, size_t num_chunks) 
-{
-    // new (rb) RingBuffer(buffer, num_chunks);
-    rb->init(buffer, num_chunks);
-}
+// __global__ void init_ringbuffer_kernel(RingBuffer* rb, void* buffer, size_t num_chunks) 
+// {
+//     // new (rb) RingBuffer(buffer, num_chunks);
+//     rb->init(buffer, num_chunks);
+// }
 
-__global__ void push_kernel(RingBuffer* rb, void* data, size_t size, bool* success) {
-    *success = rb->enqueue(data); //, CHUNK_SIZE);
-}
+// __global__ void push_kernel(RingBuffer* rb, void* data, size_t size, bool* success) {
+//     *success = rb->enqueue(data); //, CHUNK_SIZE);
+// }
 
-__global__ void get_head_kernel(RingBuffer* rb, void** head) {
-    *head = rb->head;
-}
+// __global__ void get_head_kernel(RingBuffer* rb, void** head) {
+//     *head = rb->head;
+// }
 
 void Sender::recv_addr(int sockfd)
 {
@@ -32,37 +32,18 @@ void Sender::recv_addr(int sockfd)
     free(remote_rkey_buffer);
 
     // 2. receive ring buffer information
-    RingBufferRemoteInfo buf;
-    socket_recv(sockfd, &buf, sizeof(buf));
-
-    remote_buf = buf.buffer_addr;
-    remote_tail_ptr = buf.tail_addr_ptr;
-    remote_head = buf.head_addr;
-    remote_tail = buf.tail_addr;
-    size = buf.size;
+    socket_recv(sockfd, &remote_rand_ptr, sizeof(void *));
+    socket_recv(sockfd, &remote_rand, sizeof(void *));
 
     printf("Remote ring buffer info:\n");
-    printf("    buf: %p\n", remote_buf);
-    printf("    tail_ptr: %p\n", remote_tail_ptr);
-    printf("    head: %p\n", remote_head);
-    printf("    tail: %p\n", remote_tail);
-    printf("    size: %p\n", size);
+    printf("    rand_ptr: %p\n", remote_rand_ptr);
+    printf("    rand: %p\n", remote_rand);
 }
 
 Sender::Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd)
     : context(ctx), worker(wrk), ep(endpoint)
 {
-    // sender doesn't need to register own ring buffer
-    // 1. allocate ring buffer
-    cudaMalloc(&this->d_ringbuf, sizeof(RingBuffer));
     
-    void* data_buffer;
-    cudaMalloc(&data_buffer, NUM_CHUNKS * CHUNK_SIZE);
-
-    init_ringbuffer_kernel<<<1, 1>>>(this->d_ringbuf, data_buffer, NUM_CHUNKS);
-    cudaDeviceSynchronize();
-
-    recv_addr(sockfd);
 }
 
 void Sender::process_req(void* request) 
@@ -82,100 +63,95 @@ void Sender::process_req(void* request)
     ucp_request_free(request);
 }
 
-bool Sender::push(void* data, size_t size) {
-    bool success;
-    push_kernel<<<1,1>>>(d_ringbuf, data, size, &success);
-    cudaDeviceSynchronize();
-    return success;
-}
-
 void Sender::remote_push(int gpu_id) 
 {   
-    (void *) gpu_id;
-    if (!remote_tail || !remote_head) {
-        printf("Remote head or tail is null. Cannot enqueue data.\n");
-    }
+    (void) gpu_id;
+    // if (!remote_tail || !remote_head) {
+    //     printf("Remote head or tail is null. Cannot enqueue data.\n");
+    // }
 
     // 0. get the data we are sending from our local send buffer
-    void* local_head;
-    get_head_kernel<<<1,1>>>(d_ringbuf, &local_head);
-    cudaDeviceSynchronize();
+    // void* local_head;
+    // get_head_kernel<<<1,1>>>(d_ringbuf, &local_head);
+    // cudaDeviceSynchronize();
 
-    char* host_chunk = (char*)malloc(CHUNK_SIZE);
-    cudaMemcpy(host_chunk, local_head, CHUNK_SIZE, cudaMemcpyDeviceToHost);
-    printf("Chunk contents (first 64 bytes):\n");
-    for (int i = 0; i < std::min(CHUNK_SIZE, 64); ++i) {
-        printf("%c", host_chunk[i]);
-    }
-    printf("\n");
-    free(host_chunk);
+    // char* host_chunk = (char*)malloc(CHUNK_SIZE);
+    // cudaMemcpy(host_chunk, local_head, CHUNK_SIZE, cudaMemcpyDeviceToHost);
+    // printf("Chunk contents (first 64 bytes):\n");
+    // for (int i = 0; i < std::min(CHUNK_SIZE, 64); ++i) {
+    //     printf("%c", host_chunk[i]);
+    // }
+    // printf("\n");
+    // free(host_chunk);
 
     // fetch the current head ? and check the count ?
 
     // 3. write data to old tail position
-    ucp_request_param_t put_params = {
-        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-        .memory_type = UCS_MEMORY_TYPE_CUDA
-    };
+    // ucp_request_param_t put_params = {
+    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
+    //     .memory_type = UCS_MEMORY_TYPE_CUDA
+    // };
 
-    void* put_req = ucp_put_nbx(
-        ep,
-        local_head,
-        CHUNK_SIZE,
-        remote_tail,
-        remote_rkey,
-        &put_params
-    );
-    process_req(put_req);
+    // void* put_req = ucp_put_nbx(
+    //     ep,
+    //     local_head,
+    //     CHUNK_SIZE,
+    //     remote_tail,
+    //     remote_rkey,
+    //     &put_params
+    // );
+    // process_req(put_req);
 
-    printf("data placed\n");
+    // printf("data placed\n");
 
     // 1. new tail position
-    uintptr_t new_offset = (remote_tail - remote_buf + CHUNK_SIZE) %
-                            (size * CHUNK_SIZE);
+    // uintptr_t new_offset = (remote_tail - remote_buf + CHUNK_SIZE) %
+    //                         (size * CHUNK_SIZE);
     
-    void* new_tail = (void*)(remote_buf + new_offset);
+    // void* new_tail = (void*)(remote_buf + new_offset);
 
-    printf("updated tail ptr: %p\n", remote_tail_ptr);
-    printf("old tail: %p\n", remote_tail);
-    printf("new tail: %p\n", new_tail);
+    // printf("updated tail ptr: %p\n", remote_tail_ptr);
+    // printf("old tail: %p\n", remote_tail);
+    // printf("new tail: %p\n", new_tail);
 
-    // 2. update REMOTE tail pointer first
-    ucp_request_param_t tail_params = {
-        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-        .memory_type = UCS_MEMORY_TYPE_CUDA
-    };
+    // // 2. update REMOTE tail pointer first
+    // ucp_request_param_t tail_params = {
+    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
+    //     .memory_type = UCS_MEMORY_TYPE_CUDA
+    // };
     
-    void* tail_req = ucp_put_nbx(
-        ep,
-        &new_tail,
-        sizeof(void *),
-        remote_tail_ptr,
-        remote_rkey,
-        &tail_params
-    );
-    process_req(tail_req);
+    // void* tail_req = ucp_put_nbx(
+    //     ep,
+    //     &new_tail,
+    //     sizeof(void *),
+    //     remote_tail_ptr,
+    //     remote_rkey,
+    //     &tail_params
+    // );
+    // process_req(tail_req);
+    // ucp_request_check_status(tail_req);
 
-    printf("tail written\n");
+    // printf("tail written\n");
 
-    // get new written tail
-    ucp_request_param_t get_params = {
-        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-        .memory_type = UCS_MEMORY_TYPE_CUDA
-    };
-    void *get_req = ucp_get_nbx(
-        ep,
-        tmp_debug,
-        sizeof(void *),
-        remote_tail_ptr,
-        remote_rkey,
-        &get_params
-    );
-    process_req(get_req);
-    ucp_request_check_status(tail_req);
+    // // get new written tail
+    // ucp_request_param_t get_params = {
+    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
+    //     .memory_type = UCS_MEMORY_TYPE_CUDA
+    // };
 
-    printf("get tail: %p\n", (void*)tmp_debug);
+    // void *get_req = ucp_get_nbx(
+    //     ep,
+    //     (void *)tmp_debug,
+    //     sizeof(void *),
+    //     remote_tail_ptr,
+    //     remote_rkey,
+    //     &get_params
+    // );
+    // process_req(get_req);
+    // ucp_request_check_status(get_req);
 
-    // 4. update local reference of the tail
-    remote_tail = (uintptr_t)new_tail;
+    // printf("get tail: %p\n", (void*)tmp_debug);
+
+    // // 4. update local reference of the tail
+    // remote_tail = (uintptr_t)new_tail;
 }
