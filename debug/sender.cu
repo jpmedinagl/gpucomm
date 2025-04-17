@@ -64,92 +64,98 @@ void Sender::process_req(void* request)
 void Sender::remote_push(int gpu_id) 
 {   
     (void) gpu_id;
-    // if (!remote_tail || !remote_head) {
-    //     printf("Remote head or tail is null. Cannot enqueue data.\n");
-    // }
-
-    // 0. get the data we are sending from our local send buffer
-    // void* local_head;
-    // get_head_kernel<<<1,1>>>(d_ringbuf, &local_head);
-    // cudaDeviceSynchronize();
-
-    // char* host_chunk = (char*)malloc(CHUNK_SIZE);
-    // cudaMemcpy(host_chunk, local_head, CHUNK_SIZE, cudaMemcpyDeviceToHost);
-    // printf("Chunk contents (first 64 bytes):\n");
-    // for (int i = 0; i < std::min(CHUNK_SIZE, 64); ++i) {
-    //     printf("%c", host_chunk[i]);
-    // }
-    // printf("\n");
-    // free(host_chunk);
-
-    // fetch the current head ? and check the count ?
-
-    // 3. write data to old tail position
-    // ucp_request_param_t put_params = {
-    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-    //     .memory_type = UCS_MEMORY_TYPE_CUDA
-    // };
-
-    // void* put_req = ucp_put_nbx(
-    //     ep,
-    //     local_head,
-    //     CHUNK_SIZE,
-    //     remote_tail,
-    //     remote_rkey,
-    //     &put_params
-    // );
-    // process_req(put_req);
-
-    // printf("data placed\n");
-
-    // 1. new tail position
-    // uintptr_t new_offset = (remote_tail - remote_buf + CHUNK_SIZE) %
-    //                         (size * CHUNK_SIZE);
     
-    // void* new_tail = (void*)(remote_buf + new_offset);
+    void* new_value = reinterpret_cast<void*>(0x20);
 
-    // printf("updated tail ptr: %p\n", remote_tail_ptr);
-    // printf("old tail: %p\n", remote_tail);
-    // printf("new tail: %p\n", new_tail);
+    // 2. Critical: Specify memory type for GPU operation
+    ucp_request_param_t put_params = {
+        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
+        .memory_type = UCS_MEMORY_TYPE_CUDA
+    };
 
-    // // 2. update REMOTE tail pointer first
-    // ucp_request_param_t tail_params = {
-    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-    //     .memory_type = UCS_MEMORY_TYPE_CUDA
-    // };
+    // 3. Execute the remote put
+    void* request = ucp_put_nbx(
+        ep,                    // Endpoint to receiver
+        &new_value,            // Source address (host memory)
+        sizeof(void*),         // Size of pointer
+        (uintptr_t)remote,  // Remote GPU address
+        remote_rkey,           // Remote key
+        &put_params
+    );
+
+    // 4. Block until completion
+    if (UCS_PTR_IS_PTR(request)) {
+        ucs_status_t status;
+        do {
+            ucp_worker_progress(worker);
+            status = ucp_request_check_status(request);
+        } while (status == UCS_INPROGRESS);
+        ucp_request_free(request);
+        
+        if (status != UCS_OK) {
+            fprintf(stderr, "Remote push failed: %s\n", 
+                    ucs_status_string(status));
+            return;
+        }
+    } else if (UCS_PTR_STATUS(request) != UCS_OK) {
+        fprintf(stderr, "Failed to start remote push: %s\n",
+                ucs_status_string(UCS_PTR_STATUS(request)));
+        return;
+    }
+
+    printf("Successfully updated remote rand at GPU address %p to 0x20\n", 
+           remote);
+}
+
+void Sender::verify_remote_update() {
+    // 1. Allocate and register pinned host memory
+    void* verification_value;
+    cudaMallocHost(&verification_value, sizeof(void*));
     
-    // void* tail_req = ucp_put_nbx(
-    //     ep,
-    //     &new_tail,
-    //     sizeof(void *),
-    //     remote_tail_ptr,
-    //     remote_rkey,
-    //     &tail_params
-    // );
-    // process_req(tail_req);
-    // ucp_request_check_status(tail_req);
+    // Register the host memory with UCX
+    ucp_mem_h memh;
+    ucp_mem_map_params_t params = {
+        .field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+                     UCP_MEM_MAP_PARAM_FIELD_LENGTH |
+                     UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE,
+        .address = verification_value,
+        .length = sizeof(void*),
+        .memory_type = UCS_MEMORY_TYPE_HOST
+    };
+    UCS_CHECK(ucp_mem_map(context, &params, &memh));
 
-    // printf("tail written\n");
+    // 2. Perform remote get with explicit memory handle
+    ucp_request_param_t get_params = {
+        .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE |
+                       UCP_OP_ATTR_FIELD_MEMH,
+        .memory_type = UCS_MEMORY_TYPE_HOST,
+        .memh = memh
+    };
+    
+    void* request = ucp_get_nbx(
+        ep,
+        verification_value,          // Local destination
+        sizeof(void*),               // Size
+        (uintptr_t)remote,  // Remote GPU address
+        remote_rkey,
+        &get_params
+    );
 
-    // // get new written tail
-    // ucp_request_param_t get_params = {
-    //     .op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE,
-    //     .memory_type = UCS_MEMORY_TYPE_CUDA
-    // };
+    // 3. Force completion
+    if (UCS_PTR_IS_PTR(request)) {
+        ucs_status_t status;
+        do {
+            ucp_worker_progress(worker);
+            status = ucp_request_check_status(request);
+        } while (status == UCS_INPROGRESS);
+        ucp_request_free(request);
+    }
 
-    // void *get_req = ucp_get_nbx(
-    //     ep,
-    //     (void *)tmp_debug,
-    //     sizeof(void *),
-    //     remote_tail_ptr,
-    //     remote_rkey,
-    //     &get_params
-    // );
-    // process_req(get_req);
-    // ucp_request_check_status(get_req);
+    // 4. Print results
+    printf("[VERIFY] Remote rand @ %p contains: %p\n", 
+          remote, *reinterpret_cast<void**>(verification_value));
 
-    // printf("get tail: %p\n", (void*)tmp_debug);
-
-    // // 4. update local reference of the tail
-    // remote_tail = (uintptr_t)new_tail;
+    // 5. Cleanup
+    ucp_mem_unmap(context, memh);
+    cudaFreeHost(verification_value);
 }

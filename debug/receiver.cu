@@ -14,11 +14,19 @@ void Receiver::send_addr(int sockfd)
     ucp_rkey_buffer_release(rkey_buffer);
 
     // 2. send ring buffer information
-    socket_send(sockfd, &rand, sizeof(void*))
+    socket_send(sockfd, &rand, sizeof(void*));
 
     printf("local info:\n");
     printf("    rand_ptr %p\n", &rand);
     printf("    rand: %p\n", rand);
+
+    void* rand_value;
+    cudaError_t err = cudaMemcpy(&rand_value, rand, sizeof(void*), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        printf("    *rand: CUDA ERROR (%s)\n", cudaGetErrorString(err));
+    } else {
+        printf("    *rand (value stored at GPU memory): %p\n", rand_value);
+    }
 }
 
 Receiver::Receiver(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint,

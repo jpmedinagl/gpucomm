@@ -23,8 +23,7 @@ private:
     // ucp_address_t* remote_worker;
     ucp_rkey_h remote_rkey;
 
-    uintptr_t remote_rand_ptr;
-    uintptr_t remote_rand;
+    uintptr_t remote;
 
     void process_req(void * request);
 
@@ -34,6 +33,7 @@ public:
     Sender(ucp_context_h ctx, ucp_worker_h wrk, ucp_ep_h endpoint, int sockfd);
     
     void remote_push(int gpu_id);
+    void verify_remote_update();
 };
 
 #endif // SENDER_H
