@@ -25,7 +25,7 @@ int main() {
     while (1) {
         sleep(3);
 
-        cudaMemcpy(hostBuf, recBuf, n * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(hostBuf, recBuf, n * sizeof(int), cudaMemcpyDeviceToHost);
         
         printf("Received\n");
         for (int i = 0; i < n; i++) {
