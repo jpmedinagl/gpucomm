@@ -22,7 +22,10 @@ int main() {
 
     int * sendBuf;
     cudaMalloc(&sendBuf, n * sizeof(int));
-    fill<<<256, 1>>>(sendBuf, n);
+
+    int threadsPerBlock = 256;
+    int blocks = (n + threadsPerBlock - 1) / threadsPerBlock;
+    fill<<<blocks, threadsPerBlock>>>(sendBuf, n);
     cudaDeviceSynchronize();
 
     cudaIpcMemHandle_t handle;
@@ -34,7 +37,7 @@ int main() {
     cudaIpcOpenMemHandle((void**)&recBuf, handle, cudaIpcMemLazyEnablePeerAccess);
 
 
-    send<<<256, 1>>>(sendBuf, recBuf, n);
+    send<<<blocks, threadsPerBlock>>>(sendBuf, recBuf, n);
     cudaDeviceSynchronize();
 
     printf("GPU 0 sent to receiver\n");
