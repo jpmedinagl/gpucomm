@@ -36,12 +36,24 @@ int main() {
     int *recBuf;
     cudaIpcOpenMemHandle((void**)&recBuf, handle, cudaIpcMemLazyEnablePeerAccess);
 
+    float elapsedTime = 0;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
+    cudaEventRecord(start, 0);
     send<<<blocks, threadsPerBlock>>>(sendBuf, recBuf, n);
-    cudaDeviceSynchronize();
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
 
     printf("GPU 0 sent to receiver\n");
 
+    cudaEventElapsedTime(&elapsedTime, start, stop);
+    printf("Kernel send time: %.3f ms\n", elapsedTime);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    
     cudaFree(sendBuf);
     cudaIpcCloseMemHandle(recBuf);
     return 0;
