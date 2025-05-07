@@ -20,6 +20,9 @@ __global__ void find_in_map_kernel(Map map, int* queries, int* results, int num_
 }
 
 int main() {
+    using Key = int;
+    using Value = int;
+    
     cudaIpcMemHandle_t handle;
     int fd = open("ipc_handle.bin", O_RDONLY);
     read(fd, &handle, sizeof(handle));
