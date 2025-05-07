@@ -28,6 +28,8 @@ int main() {
     auto find_ref;
     cudaIpcOpenMemHandle((void**)&find_ref, handle, cudaIpcMemLazyEnablePeerAccess);
 
+    constexpr std::size_t num_keys = 100'000;
+
     // Define some queries
     thrust::device_vector<Key> queries = {0, 1, num_keys-1, num_keys, -1};
     thrust::device_vector<Value> results(queries.size(), -1);
