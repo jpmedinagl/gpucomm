@@ -16,6 +16,7 @@ const uint16_t UCP_RKEY_MAX_SIZE{256};
 
 const uint32_t NON_GPU_EP_ID_STARTING_OFFSET{512};
 
+#include <thrust/host_vector.h>
 #include "thrust/device_vector.h"
 #include <cstddef>
 #include <cstdint>
