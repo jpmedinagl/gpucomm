@@ -11,8 +11,9 @@ __global__ void find_in_map_kernel(Map map, int* queries, int* results, int num_
     if (idx < num_queries) {
         auto found = map.find(queries[idx]);
 
-         if (found != map.end()) {
-            results[idx] = found->second;
+        if (found != map.end()) {
+			printf("key = %d, value = %d\n", queries[idx], found->second);
+            results[idx] = found->second;	
         } else {
             results[idx] = -1;
         }
@@ -70,6 +71,7 @@ void inspect_ctx(EndpointGPUCtx* gpu_ctx) {
         auto partition_key = gpu_ctx->partition_keys[i];
         printf("  Channel ID: %u, Partition Key: %d\n", partition_key.channel_id, partition_key.partition_key);
     }
+	printf("\n");
 }
 
 int main() {
@@ -113,55 +115,55 @@ int main() {
 
     // PARTITION MAP
 
-    // using Key_ft = channel_id_t;
-    // using Value_ft = partition_key_t;
+    using Key_p = channel_id_t;
+    using Value_p = partition_key_t;
 
-    // std::size_t num_keys = loader.ctx.partition_keys_count;
-    // std::size_t capacity = static_cast<std::size_t>(num_keys * 1.3);
+    std::size_t num_keys = loader.ctx.partition_keys_count;
+    std::size_t capacity = static_cast<std::size_t>(num_keys * 1.3);
 
-    // // Build host vectors from forwarding table
-    // thrust::host_vector<Key_ft> h_keys(num_keys);
-    // thrust::host_vector<Value_ft> h_values(num_keys);
+    // Build host vectors from forwarding table
+    thrust::host_vector<Key_p> h_keys(num_keys);
+    thrust::host_vector<Value_p> h_values(num_keys);
 
-    // for (std::size_t i = 0; i < num_keys; ++i) {
-    //     h_keys[i] = loader.ctx.partition_keys[i].channel_id;
-    //     h_values[i] = loader.ctx.partition_keys[i].partition_key;
-    // }
+    for (std::size_t i = 0; i < num_keys; ++i) {
+		h_keys[i] = loader.ctx.partition_keys[i].channel_id;
+		h_values[i] = loader.ctx.partition_keys[i].partition_key;
+    }
 
-    // // Move to device
-    // thrust::device_vector<Key_ft> keys = h_keys;
-    // thrust::device_vector<Value_ft> values = h_values;
+    // Move to device
+    thrust::device_vector<Key_p> keys = h_keys;
+    thrust::device_vector<Value_p> values = h_values;
 
-    // // Build map
-    // auto partition_map = cuco::static_map{
-    //     capacity,
-    //     cuco::empty_key{-1},
-    //     cuco::empty_value{-1},
-    //     cuda::std::equal_to<Key_ft>{},
-    //     cuco::linear_probing<1, cuco::default_hash_function<Key_ft>>{}
-    // };
+    // Build map
+    auto partition_map = cuco::static_map{
+		capacity,
+		cuco::empty_key{-1},
+		cuco::empty_value{-1},
+        cuda::std::equal_to<Key_p>{},
+        cuco::linear_probing<1, cuco::default_hash_function<Key_p>>{}
+    };
 
-    // // Insert key-value pairs
-    // auto zipped = thrust::make_zip_iterator(thrust::make_tuple(keys.begin(), values.begin()));
-    // partition_map.insert(zipped, zipped + num_keys);
+    // Insert key-value pairs
+    auto zipped = thrust::make_zip_iterator(thrust::make_tuple(keys.begin(), values.begin()));
+    partition_map.insert(zipped, zipped + num_keys);
 
-    // // Map fully complete
+    // Map fully complete
 
-    // thrust::device_vector<Key_ft> queries = {0, 1, 2};
-    // thrust::device_vector<Value_ft> results(queries.size(), -1);
+    thrust::device_vector<Key_p> queries = {0, 1, 2};
+    thrust::device_vector<Value_p> results(queries.size(), -1);
 
-    // // Launch a kernel to perform the lookups
-    // int* d_queries;
-    // int* d_results;
-    // cudaMalloc(&d_queries, queries.size() * sizeof(int));
-    // cudaMalloc(&d_results, queries.size() * sizeof(int));
-    // cudaMemcpy(d_queries, thrust::raw_pointer_cast(queries.data()), queries.size() * sizeof(int), cudaMemcpyDeviceToDevice);
+    // Launch a kernel to perform the lookups
+    int* d_queries;
+    int* d_results;
+    cudaMalloc(&d_queries, queries.size() * sizeof(int));
+    cudaMalloc(&d_results, queries.size() * sizeof(int));
+    cudaMemcpy(d_queries, thrust::raw_pointer_cast(queries.data()), queries.size() * sizeof(int), cudaMemcpyDeviceToDevice);
 
-    // auto find_ref = partition_map.ref(cuco::find);
+    auto find_ref = partition_map.ref(cuco::find);
 
-    // find_in_map_kernel<<<(queries.size() + 255) / 256, 256>>>(find_ref, d_queries, d_results, queries.size());
+    find_in_map_kernel<<<(queries.size() + 255) / 256, 256>>>(find_ref, d_queries, d_results, queries.size());
 
-    // // Copy results back to the host
+    // Copy results back to the host
     // cudaMemcpy(thrust::raw_pointer_cast(results.data()), d_results, queries.size() * sizeof(int), cudaMemcpyDeviceToHost);
 
     // // Output the results
@@ -176,7 +178,7 @@ int main() {
     //     std::cout << "\n";
     // }
 
-    // // Clean up
+    // Clean up
     // cudaFree(d_queries);
     // cudaFree(d_results);
 
@@ -196,7 +198,7 @@ int main() {
 
     std::size_t capacity_schema = static_cast<std::size_t>(total_pairs * 2);
 
-    auto schema_map = cuco::experimental::static_multimap<Key_schema, Value_schema>{
+    auto schema_map = cuco::static_multimap<Key_schema, Value_schema>{
         capacity_schema, 
         cuco::empty_key{empty_key_sentinel}, 
         cuco::empty_value{empty_value_sentinel}
@@ -216,14 +218,14 @@ int main() {
     schema_map.insert(pairs.begin(), pairs.end());
 
     
-    thrust::device_vector<channel_id_t> keys_to_find(1, 0);  // Only searching for key 0
+    // thrust::device_vector<channel_id_t> keys_to_find(1, 0);  // Only searching for key 0
 
     // Prepare the result space
-    thrust::device_vector<cuco::pair<channel_id_t, column_type_t>> d_results(10);  // Adjust size accordingly
+    // thrust::device_vector<cuco::pair<channel_id_t, column_type_t>> d_results(10);  // Adjust size accordingly
 
     // Launch the kernel (use appropriate block and grid sizes)
-    int block_size = 256; // Example block size
-    int grid_size = (keys_to_find.size() + block_size - 1) / block_size;
+    // int block_size = 256; // Example block size
+    // int grid_size = (keys_to_find.size() + block_size - 1) / block_size;
 
     // auto find_ref = schema_map.ref(cuco::find);
 
