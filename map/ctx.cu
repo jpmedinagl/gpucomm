@@ -2,8 +2,11 @@
 #include <random>
 
 #include "types.cuh"
+#include <cooperative_groups.h>
 
-using map_t = cuco::static_map<endpoint_id_t, forwarding_table_entry_t>;
+namespace cg = cooperative_groups;
+
+constexpr uint32_t BUFFER_SIZE = 5;
 
 template <typename Map>
 __global__ void find_in_map_kernel(Map map, int* queries, int* results, int num_queries) {
@@ -20,29 +23,72 @@ __global__ void find_in_map_kernel(Map map, int* queries, int* results, int num_
     }
 }
 
-template <typename MultiMap>
-__global__ void search_in_kernel(MultiMap map, 
-    thrust::device_vector<channel_id_t> keys_to_find,
-    thrust::device_vector<cuco::pair<channel_id_t, column_type_t>> d_results) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+using Key_schema = channel_id_t;
+using Value_schema = column_type_t;
+using Map_t        = cuco::static_multimap<Key_schema, Value_schema>;
+using View_t       = typename Map_t::device_view;
 
-    // Ensure the thread is within bounds
-    if (idx < keys_to_find.size()) {
-        channel_id_t key = keys_to_find[idx];
+template <uint32_t BUFFER_SIZE>
+__global__ void retrieve_from_multimap_kernel(
+    View_t map,
+    Key_schema const*          queries,
+    Key_schema*                out_keys,     
+    Value_schema*              out_values,   
+    int*                       out_counts,
+    int                        num_queries)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= num_queries) return;
 
-        // Find how many values are associated with the key
-        auto output_size = map.count_outer(&key, &key + 1);
+    // 1) Query key
+    Key_schema key = queries[tid];
+    printf("thread %d process key: %d\n", tid, key);
 
-        // Allocate result space for this key
-        thrust::device_vector<cuco::pair<channel_id_t, column_type_t>> local_results(output_size);
+    // 2) Cooperative groups for flush vs. probe
+    auto cta = cg::this_thread_block();
+    constexpr uint32_t tile_size = Map_t::probe_sequence_type::cg_size;
+    auto flush_tile = cg::tiled_partition<tile_size>(cta);  // for flushing
+    auto probe_tile = cg::tiled_partition<tile_size>(cta);  // for probing
 
-        // Retrieve key-value pairs
-        auto output_end = map.retrieve_outer(&key, &key + 1, local_results.begin());
-        int retrieve_size = output_end - local_results.begin();
+    // 3) Shared-memory staging
+    __shared__ uint32_t flush_counter;
+    __shared__ cuda::std::atomic<uint32_t> match_count;
+    __shared__ View_t::value_type          staging_buf[BUFFER_SIZE];
 
-        // Copy result to global results array (ensure no race condition)
-        for (int i = 0; i < retrieve_size; ++i) {
-            d_results[idx * retrieve_size + i] = local_results[i];
+    if (threadIdx.x == 0) {
+        flush_counter = 0;
+        match_count.store(0, cuda::std::memory_order_relaxed);
+    }
+    __syncthreads();
+
+    // 4) Call the templated retrieve<B>() API
+    map.template retrieve<BUFFER_SIZE>(
+        flush_tile,         // flushing CG: thread_block_tile<tile_size>
+        probe_tile,         // probing CG: thread_block_tile<tile_size>
+        key,                // lookup key
+        &flush_counter,     // shared atomic flush counter
+        staging_buf,        // shared staging buffer (pair<key,value>[BUFFER_SIZE])
+        &match_count,       // shared atomic match counter
+        staging_buf         // output iterator → writes into staging_buf
+    );
+
+    __syncthreads();
+
+    // 5) One thread writes results globally
+    if (threadIdx.x == 0) {
+        uint32_t n = match_count.load(cuda::std::memory_order_relaxed);
+        out_counts[tid] = static_cast<int>(n);
+
+        printf("[tid %d] found %u matches for key %d\n", tid, n, key);
+
+        for (int i = 0; i < n; ++i) {
+            int   global_idx = tid * BUFFER_SIZE + i;
+            auto  val        = staging_buf[i].second;
+
+            out_keys  [global_idx] = key;
+            out_values[global_idx] = val;
+
+            printf("    [%d] value = %d\n", i, val);
         }
     }
 }
@@ -111,10 +157,8 @@ int main() {
 
     inspect_ctx(&loader.ctx);
 
-    // Endpoint context is loaded
-
-    // PARTITION MAP
-
+    // PARTITION MAP EXAMPLE: cuco::static_map
+    /*
     using Key_p = channel_id_t;
     using Value_p = partition_key_t;
 
@@ -163,30 +207,60 @@ int main() {
 
     find_in_map_kernel<<<(queries.size() + 255) / 256, 256>>>(find_ref, d_queries, d_results, queries.size());
 
-    // Copy results back to the host
-    // cudaMemcpy(thrust::raw_pointer_cast(results.data()), d_results, queries.size() * sizeof(int), cudaMemcpyDeviceToHost);
+    Copy results back to the host
+    cudaMemcpy(thrust::raw_pointer_cast(results.data()), d_results, queries.size() * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // // Output the results
-    // std::cout << "\nQuery results:\n";
-    // for (int i = 0; i < queries.size(); ++i) {
-    //     std::cout << "Key " << queries[i] << " -> Value ";
-    //     if (results[i] == -1) {
-    //         std::cout << "NOT FOUND";
-    //     } else {
-    //         std::cout << results[i];
-    //     }
-    //     std::cout << "\n";
-    // }
+    // Output the results
+    std::cout << "\nQuery results:\n";
+    for (int i = 0; i < queries.size(); ++i) {
+        std::cout << "Key " << queries[i] << " -> Value ";
+        if (results[i] == -1) {
+            std::cout << "NOT FOUND";
+        } else {
+            std::cout << results[i];
+        }
+        std::cout << "\n";
+    }
 
-    // Clean up
-    // cudaFree(d_queries);
-    // cudaFree(d_results);
+    Clean up
+    cudaFree(d_queries);
+    cudaFree(d_results);
+    */
 
-    // SCHEMA MULTIMAP
-    using Key_schema = channel_id_t;     // typically an int
-    using Value_schema = column_type_t;  // typically an enum or small int
 
-    Key_schema empty_key_sentinel     = 100;
+
+
+    // Multimap test insertion
+    // cuco::static_multimap<int,int> m{10, cuco::empty_key{-1}, cuco::empty_value{-1}};
+
+    // // host‐vector of {key,value} pairs:
+    // std::vector<cuco::pair<int,int>> h{{0,100},{0,101},{1,200}};
+    // thrust::device_vector<decltype(h)::value_type> dv = h;
+
+    // // device‐bulk insert:
+    // m.insert(dv.begin(), dv.end());
+    // cudaDeviceSynchronize();
+    
+    // thrust::device_vector<Key_schema> d_keys_to_check = {0};
+    // size_t total_count = m.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    // std::cout << "Total occurrences of key 0: " << total_count << std::endl;
+
+    // d_keys_to_check = {1};
+    // total_count = m.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    // std::cout << "Total occurrences of key 1: " << total_count << std::endl;
+
+    // d_keys_to_check = {2};
+    // total_count = m.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    // std::cout << "Total occurrences of key 2: " << total_count << std::endl;
+
+    // exit(1);
+
+    
+
+
+
+    // SCHEMA MULTIMAP EXAMPLE: cuco::static_multimap
+    Key_schema empty_key_sentinel = 100;
     Value_schema empty_value_sentinel = COLUMN_TYPE_NOT_SUPPORTED;
 
     std::size_t total_pairs = 0;
@@ -214,32 +288,64 @@ int main() {
             ++index;
         }
     }
+    printf("\n");
 
     schema_map.insert(pairs.begin(), pairs.end());
 
+
+    // Test the insertion:
+    thrust::device_vector<Key_schema> d_keys_to_check = {0};
+    size_t total_count = schema_map.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    std::cout << "Total occurrences of key 0: " << total_count << std::endl;
+
+    d_keys_to_check = {1};
+    total_count = schema_map.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    std::cout << "Total occurrences of key 1: " << total_count << std::endl;
+
+    d_keys_to_check = {2};
+    total_count = schema_map.count(d_keys_to_check.begin(), d_keys_to_check.end());
+    std::cout << "Total occurrences of key 2: " << total_count << std::endl;
     
-    // thrust::device_vector<channel_id_t> keys_to_find(1, 0);  // Only searching for key 0
+    printf("\n");
 
-    // Prepare the result space
-    // thrust::device_vector<cuco::pair<channel_id_t, column_type_t>> d_results(10);  // Adjust size accordingly
 
-    // Launch the kernel (use appropriate block and grid sizes)
-    // int block_size = 256; // Example block size
-    // int grid_size = (keys_to_find.size() + block_size - 1) / block_size;
+    // Test kernel retrieval
+    thrust::device_vector<Key_schema> queries = {2, 1};
 
-    // auto find_ref = schema_map.ref(cuco::find);
+    int num_queries = queries.size();
+    constexpr uint32_t max_results_per_key = 10;
 
-    // search_in_kernel<<<grid_size, block_size>>>(find_ref, keys_to_find, d_results);
+    thrust::device_vector<Key_schema> result_keys(queries.size() * max_results_per_key, 100);
+    thrust::device_vector<Value_schema> result_values(queries.size() * max_results_per_key, COLUMN_TYPE_NOT_SUPPORTED);
+    thrust::device_vector<int> value_counts(queries.size(), 0);
 
-    // Synchronize the kernel and check for errors
-    //cudaDeviceSynchronize();
+    Key_schema* d_queries = thrust::raw_pointer_cast(queries.data());
+    Key_schema* d_result_keys = thrust::raw_pointer_cast(result_keys.data());
+    Value_schema* d_result_values = thrust::raw_pointer_cast(result_values.data());
+    int* d_value_counts = thrust::raw_pointer_cast(value_counts.data());
 
-    // Print the results (for key = 0)
-    //for (int i = 0; i < d_results.size(); ++i) {
-    //    if (d_results[i].first != empty_key_sentinel) {  // Check if this is a valid result
-    //        std::cout << "Key: " << d_results[i].first << ", Value: " << d_results[i].second << std::endl;
-    //    }
-    //}
+    // auto retrieve_ref = schema_map.ref(cuco::retrieve);
+
+    // multimap does not have ref, it uses device view
+    View_t schema_map_device_view = schema_map.get_device_view();
+
+    constexpr int THREADS_PER_BLOCK = 256;
+    int blocks = (num_queries + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+
+    retrieve_from_multimap_kernel<max_results_per_key>
+    <<<blocks, THREADS_PER_BLOCK>>>(
+        schema_map_device_view,
+        d_queries,
+        d_result_keys,
+        d_result_values,
+        d_value_counts,
+        num_queries
+    );
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+    }
 
     return 0;
 }
