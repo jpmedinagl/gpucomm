@@ -128,10 +128,31 @@ struct EndpointGPUCtx {
   size_t column_types_sizes[5]{0};
 };
 
+//struct address_pair_t {
+  //byte_t *send_buffer;
+  //byte_t *receive_buffer;
+//};
+
+//struct EndpointGPUCtxMap {
+  //cuco::static_multimap<endpoint_id_t, endpoint_id_t> forwarding_table;
+
+  //cuco::static_multimap<channel_id_t, column_type_t> schemas; 
+
+  //cuco::static_map<endpoint_id_t, address_pair_t> address_translation;
+
+  //cuco::static_map<channel_id_t, partition_key_t> partition_keys;
+
+  //cuco::static_multimap<channel_id_t, endpoint_id_t> destinations;
+
+  //size_t column_types_sizes[5]{0};
+//};
+
 struct EndpointGPUCtxLoader {
   EndpointGPUCtx ctx{};
 
   EndpointGPUCtx *data_on_gpu{nullptr};
+
+  //EndpointGPUCtxMap *gpu_map{nullptr};
 
   std::mutex fwd_tbl_mutex{};
   std::mutex addr_trans_mutex{};
@@ -158,6 +179,31 @@ struct EndpointGPUCtxLoader {
 
     return handle;
   }
+
+  //void create_forwarding_table_map() {}
+
+  //void create_schemas_map() {}
+
+  //void create_address_translation_map() {}
+
+  //void create_partition_map() {}
+
+  //void create_destinations_map() {}
+
+  //cudaIpcMemHandle_t load_to_gpu_map() {
+	//CHECK_CUDA_ERR(cudaMalloc((void **)&gpu_map, sizeof(EndpointGPUCtxMap)));
+	
+	//create_forwarding_table_map();
+	//create_schemas_map();
+	//create_address_translation_map();
+	//create_partition_map();
+	//create_destinations_map();
+
+	//cudaIpcMemHandle_t handle{};
+	//CHECK_CUDA_ERR(cudaIpcGetMemHandle(&handle, gpu_map));
+
+	//return handle;
+  //}
 
   void add_forwarding_table_entry(forwarding_table_entry_t entry) {
     std::unique_lock lock(fwd_tbl_mutex);
